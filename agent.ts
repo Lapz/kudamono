@@ -133,7 +133,7 @@ agent.tool("github", {
   handler: async ({ owner, repo }) => {
     return {
       success: true,
-      data: { owner: "ovotech", repo: "gemini" },
+      data: { owner: "lapz", repo: "mori" },
     };
   },
 });
