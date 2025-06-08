@@ -35,10 +35,6 @@ interface Agentic {
   getTool(name: string): Result<Tool, undefined>;
 }
 
-type Events = {
-  response: object;
-};
-
 export const agent: Agentic = {
   tools: new Map<string, Tool>(),
 
@@ -131,6 +127,68 @@ agent.tool("fetch_file", {
     try {
       const file = await fs.readFile(filePath, "utf-8");
       return ok(file);
+    } catch (e) {
+      return err(e as Error);
+    }
+  },
+});
+
+agent.tool("list_files", {
+  description: "A tool that list all files within a directory",
+  schema: z.object({
+    dirPath: z.string(),
+  }),
+  handler: async ({ dirPath }) => {
+    try {
+      let buffer = "";
+      const files = await fs.readdir(dirPath);
+
+      for (const file of files) {
+        buffer += `${file}\n`;
+      }
+
+      return ok(buffer);
+    } catch (e) {
+      return err(e as Error);
+    }
+  },
+});
+
+agent.tool("create_file", {
+  description: "Create a file with a given extension ",
+  schema: z.object({
+    filePath: z.string(),
+
+    fileContents: z.string(),
+  }),
+  handler: async ({ filePath, fileContents }) => {
+    try {
+      await fs.writeFile(filePath, fileContents, {});
+
+      return ok("Created file successfully");
+    } catch (e) {
+      return err(e as Error);
+    }
+  },
+});
+
+agent.tool("replace_in_file", {
+  description:
+    "A tool to replace a `oldStr` with `newStr` in place. It will throw an error if the file does not.",
+  schema: z.object({
+    filePath: z.string(),
+    newStr: z.string(),
+    oldStr: z.string(),
+  }),
+  handler: async ({ filePath, newStr, oldStr }) => {
+    try {
+      const fileContents = await fs.readFile(filePath, { encoding: "utf8" });
+
+      fileContents.replace(oldStr, newStr);
+
+      await fs.writeFile(filePath, fileContents);
+
+      return ok("Replaced In File successfully");
     } catch (e) {
       return err(e as Error);
     }
