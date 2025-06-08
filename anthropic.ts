@@ -23,14 +23,23 @@ export type Message = {
   stop_sequence: null | string;
 };
 
-type ToolUseContent = {
+export type ToolUseContent = {
   id: string;
   input: Record<string, unknown>;
   name: string;
   type: "tool_use";
 };
 
-type TextContent = {
+export type TextContent = {
   type: "text";
   text: string;
 };
+
+export type ToolResultMessage = {
+  type: "tool_result";
+  tool_use_id: string;
+  content: string;
+  is_error: boolean;
+};
+
+export type ToolUseMessage = ToolUseContent;

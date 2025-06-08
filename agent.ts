@@ -1,28 +1,22 @@
 import fs from "fs/promises";
-import z, { type ZodTypeAny } from "zod";
+import z from "zod/v4";
 import { err, ok, type Result } from "./result";
 import type { Conversation } from "./conversation";
 import { config } from "./config";
 import { goldText } from "./text";
-import EventEmitter from "events";
-import type { Emitter, EventKey, EventReceiver } from "./events";
-import type { Message } from "./Anthropic";
 
-type Tool<K = unknown> = {
+import type { Message } from "./anthropic";
+
+type Tool = {
   name: string;
   description?: string;
-  schema: K;
-  process(
-    args: Zod.infer<K extends ZodTypeAny ? K : never>
-  ): Promise<Result<unknown, unknown>>;
+  schema: z.ZodType;
+  process(args: unknown): Promise<Result<string, Error>>;
 };
 
-type EventMap = Record<string, any>;
-
-interface Agentic<T extends EventMap> extends Emitter<T> {
-  tools: Map<string, Tool<unknown>>;
-  emitter: EventEmitter;
-  tool<K extends Zod.ZodTypeAny>(
+interface Agentic {
+  tools: Map<string, Tool>;
+  tool<K extends z.ZodType>(
     name: string,
     {
       description,
@@ -31,30 +25,40 @@ interface Agentic<T extends EventMap> extends Emitter<T> {
     }: {
       description?: string;
       schema: K;
-      handler: (args: z.infer<K>) => Promise<Result<unknown, unknown>>;
+      handler: (args: z.infer<K>) => Promise<Result<string, Error>>;
     }
   ): void;
 
   initialize(): string;
 
   run(conversation: Conversation): Promise<Result<Message, Error>>;
+  getTool(name: string): Result<Tool, undefined>;
 }
 
 type Events = {
   response: object;
 };
 
-export const agent: Agentic<Events> = {
+export const agent: Agentic = {
   tools: new Map<string, Tool>(),
-  emitter: new EventEmitter(),
+
   tool(name, { description, schema, handler }) {
     const tool: Tool = {
       name,
       description,
       schema,
       process: async (args) => {
-        const parsedArgs = schema.parse(args);
-        return handler(parsedArgs);
+        const parsedArgs = schema.safeParse(args);
+
+        if (!parsedArgs.success) {
+          return err(
+            new Error(
+              `Wrong args for tool (${name}) used by Kudamono\n:${args}`
+            )
+          );
+        }
+
+        return handler(parsedArgs.data);
       },
     };
     this.tools.set(name, tool);
@@ -74,7 +78,18 @@ export const agent: Agentic<Events> = {
       max_tokens: 1024,
       messages: conversation.history,
       system: agent.initialize(),
+      tools: this.tools
+        .entries()
+        .map(([toolName, toolConfig]) => {
+          return {
+            name: toolName,
+            description: toolConfig.description,
+            input_schema: z.toJSONSchema(toolConfig.schema),
+          };
+        })
+        .toArray(),
     };
+
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -93,33 +108,31 @@ export const agent: Agentic<Events> = {
     /// todo try catch this
     const body = await response.json();
 
-    this.emitter.emit("response", body);
-
     return ok(body as Message);
   },
 
-  on<K extends EventKey<Events>>(eventName: K, fn: EventReceiver<Events[K]>) {
-    this.emitter.on(eventName, fn);
-  },
+  getTool(name) {
+    const tool = this.tools.get(name);
 
-  off<K extends EventKey<Events>>(eventName: K, fn: EventReceiver<Events[K]>) {
-    this.emitter.off(eventName, fn);
-  },
+    if (!tool) {
+      return err(undefined);
+    }
 
-  emit<K extends EventKey<Events>>(eventName: K, params: Events[K]) {
-    this.emitter.emit(eventName, params);
+    return ok(tool);
   },
 };
 
 agent.tool("fetch_file", {
   description: "Fetch a file from the filesystem",
-  schema: z.string(),
-  handler: async (filePath) => {
+  schema: z.object({
+    filePath: z.string(),
+  }),
+  handler: async ({ filePath }) => {
     try {
       const file = await fs.readFile(filePath, "utf-8");
       return ok(file);
     } catch (e) {
-      return err(e);
+      return err(e as Error);
     }
   },
 });
@@ -131,10 +144,12 @@ agent.tool("github", {
     repo: z.string(),
   }),
   handler: async ({ owner, repo }) => {
-    return {
-      success: true,
-      data: { owner: "lapz", repo: "mori" },
-    };
+    return ok(
+      JSON.stringify({
+        success: true,
+        data: { owner: "lapz", repo: "mori" },
+      })
+    );
   },
 });
 
@@ -145,11 +160,11 @@ agent.tool("add_numbers", {
     b: z.number(),
   }),
   handler: async ({ a, b }) => {
-    return ok(a + b);
+    return ok(JSON.stringify(a + b));
   },
 });
 
-function buildPrompt(tools: Map<string, Tool<unknown>>) {
+function buildPrompt(tools: Map<string, Tool>) {
   const initialPrompt = `You are a helpful assistant. You can use the following tools:
   ${Array.from(tools.values())
     .map((tool) => {

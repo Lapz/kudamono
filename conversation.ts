@@ -1,4 +1,9 @@
-type ConversationItem = { role: string; content: string };
+import type { ToolResultMessage, ToolUseMessage } from "./anthropic";
+
+type ConversationItem = {
+  role: "user" | "assistant";
+  content: string | (ToolResultMessage | ToolUseMessage)[];
+};
 
 export class Conversation {
   history: ConversationItem[];

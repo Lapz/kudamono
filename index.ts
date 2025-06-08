@@ -3,6 +3,7 @@ import { agent } from "./agent";
 import { Conversation } from "./conversation";
 import { goldText, grayText } from "./text";
 import { err, isError, isOk, ok, type Result } from "./result";
+import type { Message, ToolUseContent } from "./anthropic";
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -45,11 +46,7 @@ async function main() {
       continue;
     }
 
-    response.data.content.forEach((contentBlock) => {
-      if (contentBlock.type === "text") {
-        console.log(`${goldText("Kudamono")}:`, contentBlock.text);
-      }
-    });
+    await handleAgentMessage(conversation, response.data);
 
     console.log("");
 
@@ -68,6 +65,24 @@ function printWelcomeMessage() {
   console.log("Type 'clear' to clear the terminal");
   console.log("Press Ctrl+C to exit!");
   console.log("\n");
+}
+
+function handleToolUse(
+  message: ToolUseContent
+): Promise<Result<string, unknown>> {
+  console.log(`${goldText("Kudamono")}: Using tool "${message.name}"\n`);
+
+  const maybeTool = agent.getTool(message.name);
+
+  if (isError(maybeTool)) {
+    return Promise.resolve(
+      err(new Error(`Unknown tool_used by claude ${message.name}`))
+    );
+  }
+
+  const tool = maybeTool.data;
+
+  return tool.process(message.input);
 }
 
 function maybeRunCommand(userInput: string): Result<undefined, undefined> {
@@ -109,6 +124,77 @@ function maybeRunCommand(userInput: string): Result<undefined, undefined> {
   }
 
   return err(undefined);
+}
+
+async function handleAgentMessage(
+  conversation: Conversation,
+  message: Message
+) {
+  for (let index = 0; index < message.content.length; index++) {
+    const contentBlock = message.content[index];
+
+    if (!contentBlock) {
+      continue;
+    }
+
+    switch (contentBlock.type) {
+      case "text":
+        console.log(`${goldText("Kudamono")}:`, contentBlock.text);
+        break;
+      case "tool_use": {
+        const toolResult = await handleToolUse(contentBlock);
+
+        if (isOk(toolResult)) {
+          conversation.addToHistory({
+            role: "assistant",
+            content: [contentBlock],
+          });
+          conversation.addToHistory({
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: contentBlock.id,
+                content: toolResult.data,
+                is_error: false,
+              },
+            ],
+          });
+        } else {
+          conversation.addToHistory({
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: contentBlock.id,
+                content: (toolResult.error as Error).stack ?? "",
+                is_error: true,
+              },
+            ],
+          });
+        }
+
+        const response = await agent.run(conversation);
+
+        if (isError(response)) {
+          console.log(
+            `${goldText(
+              "Kudamono"
+            )}: Sorry I couldn't process your request because:`,
+            response.error
+          );
+          continue;
+        }
+
+        await handleAgentMessage(conversation, response.data);
+
+        break;
+      }
+
+      default:
+        break;
+    }
+  }
 }
 
 main().catch((err) => {
