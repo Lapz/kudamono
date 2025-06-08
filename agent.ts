@@ -109,7 +109,7 @@ export const agent: Agentic<Events> = {
   },
 };
 
-agent.tool("fetch_file,", {
+agent.tool("fetch_file", {
   description: "Fetch a file from the filesystem",
   schema: z.string(),
   handler: async (filePath) => {
