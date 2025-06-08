@@ -6,6 +6,7 @@ import { config } from "./config";
 import { goldText } from "./text";
 import EventEmitter from "events";
 import type { Emitter, EventKey, EventReceiver } from "./events";
+import type { Message } from "./Anthropic";
 
 type Tool<K = unknown> = {
   name: string;
@@ -36,12 +37,13 @@ interface Agentic<T extends EventMap> extends Emitter<T> {
 
   initialize(): string;
 
-  run(conversation: Conversation): Promise<Result<unknown, Error>>;
+  run(conversation: Conversation): Promise<Result<Message, Error>>;
 }
 
 type Events = {
   response: object;
 };
+
 export const agent: Agentic<Events> = {
   tools: new Map<string, Tool>(),
   emitter: new EventEmitter(),
@@ -93,7 +95,7 @@ export const agent: Agentic<Events> = {
 
     this.emitter.emit("response", body);
 
-    return ok(body);
+    return ok(body as Message);
   },
 
   on<K extends EventKey<Events>>(eventName: K, fn: EventReceiver<Events[K]>) {

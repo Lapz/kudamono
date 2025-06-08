@@ -45,7 +45,7 @@ async function main() {
       continue;
     }
 
-    const content = response.data.content.forEach((contentBlock) => {
+    response.data.content.forEach((contentBlock) => {
       if (contentBlock.type === "text") {
         console.log(`${goldText("Kudamono")}:`, contentBlock.text);
       }
