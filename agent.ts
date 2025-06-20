@@ -243,6 +243,49 @@ agent.tool("search_files", {
   },
 });
 
+agent.tool("plan", {
+  description:
+    "A tool that you can use when your given a task to figure out what steps you need to to take to complete the task",
+  schema: z.object({
+    task: z.string(),
+  }),
+  handler: async ({ task }) => {
+    const response = await fetch(
+      "https://openrouter.ai/api/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "openai/gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content:
+                'You are an assistant equipped with a specialized planning tool that helps you break down complex tasks into actionable steps before execution.\n\n## Planning Tool Usage\n\nWhen given a task, you have access to a planning_tool that allows you to consult other specialized models for strategic planning. Use this tool when:\n\n- The task is complex or multi-faceted\n- You need to consider multiple approaches or perspectives\n- The task requires domain-specific expertise\n- You want to ensure optimal sequencing of steps\n- The task involves coordination between different components or systems\n\n## Process Flow\n\n1. Task Analysis: First, analyze the given task to understand its scope, complexity, and requirements.\n\n2. Planning Phase: Use the planning tool to generate a comprehensive plan:\n   \n   planning_tool(\n     task: "The original task description",\n     context: "Any relevant context or constraints",\n     requirements: "Specific requirements or success criteria"\n   )\n   \n\n3. Plan Review: Examine the generated plan for:\n   - Completeness of steps\n   - Logical sequencing\n   - Resource requirements\n   - Potential risks or challenges\n   - Success metrics\n\n4. Execution Phase: Execute the plan step-by-step, using the planning output as your guide.\n\n5. Adaptation: If you encounter issues during execution, you may call the planning tool again to revise the approach.\n\n## Planning Tool Parameters\n\n- task: The main objective or goal to accomplish\n- context: Background information, constraints, or environmental factors\n- requirements: Success criteria, quality standards, or specific deliverables\n- expertise_needed: Specific domains or skills required (optional)\n- timeline: Time constraints or deadlines (optional)\n- resources: Available tools, budget, or materials (optional)\n\n## Example Usage\n\nUser Request: "Help me create a marketing campaign for a new fitness app"\n\nYour Response:\n1. First, I\'ll use the planning tool to develop a comprehensive strategy for your fitness app marketing campaign.\n\n2. [Call planning tool with task details]\n\n3. Based on the planning output, I\'ll execute each step of the campaign development process.\n\n## Guidelines\n\n- Always use the planning tool for tasks that would benefit from strategic thinking\n- Be transparent about when you\'re planning vs. executing\n- If the initial plan seems insufficient during execution, don\'t hesitate to re-plan\n- Consider the planning output as a guide, not a rigid script - adapt as needed\n- Focus on actionable, specific steps rather than vague recommendations\n\nRemember: The planning tool is designed to enhance your problem-solving capabilities by leveraging specialized planning expertise. Use it to ensure thorough, well-structured approaches to complex tasks.',
+            },
+            {
+              role: "user",
+              content: task,
+            },
+          ],
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      return err(new Error(await response.text()));
+    }
+
+    const jsonResponse = await response.json();
+    const planContent = jsonResponse.choices?.[0]?.message?.content || "No plan generated";
+    
+    return ok(planContent);
+  },
+});
+
 function buildPrompt(tools: Map<string, Tool>) {
   const initialPrompt = `You are a helpful assistant. You can use the following tools:
   ${Array.from(tools.values())
@@ -250,14 +293,7 @@ function buildPrompt(tools: Map<string, Tool>) {
       return `- ${tool.name}: ${tool.description}`;
     })
     .join("\n")}
-  You can use these tools to help answer questions. If you need to use a tool, please respond with the tool name and the arguments in JSON format. For example:
-  {
-    "tool_name": "add_numbers",
-    "args": {
-      "a": 1,
-      "b": 2
-    }
-  }
-  If you don't need to use a tool, just respond with your answer.`;
+  When given a task to complete, you can use the plan tool to plan out what step's you will take and how to complete them,
+  present the plan to the user and then after the user has approved the plan, execute the plan`;
   return initialPrompt;
 }
