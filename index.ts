@@ -1,9 +1,9 @@
-import readline from "node:readline/promises";
-import { agent } from "./agent";
-import { Conversation } from "./conversation";
-import { goldText, grayText } from "./text";
-import { err, isError, isOk, ok, type Result } from "./result";
-import type { Message, ToolUseContent } from "./anthropic";
+import * as readline from "node:readline/promises";
+import { agent } from "./agent.ts";
+import { Conversation } from "./conversation.ts";
+import { goldText, grayText } from "./text.ts";
+import { err, isError, isOk, ok, type Result } from "./result.ts";
+import type { Message, ToolUseContent } from "./anthropic.ts";
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -137,6 +137,11 @@ async function handleAgentMessage(
       continue;
     }
 
+    conversation.addToHistory({
+      role: "assistant",
+      content: [contentBlock as any],
+    });
+
     switch (contentBlock.type) {
       case "text":
         console.log(`${goldText("Kudamono")}:`, contentBlock.text);
@@ -145,10 +150,6 @@ async function handleAgentMessage(
         const toolResult = await handleToolUse(contentBlock);
 
         if (isOk(toolResult)) {
-          conversation.addToHistory({
-            role: "assistant",
-            content: [contentBlock],
-          });
           conversation.addToHistory({
             role: "user",
             content: [
@@ -167,7 +168,7 @@ async function handleAgentMessage(
               {
                 type: "tool_result",
                 tool_use_id: contentBlock.id,
-                content: (toolResult.error as Error).stack ?? "",
+                content: (toolResult.error as Error).message ?? "",
                 is_error: true,
               },
             ],
@@ -197,6 +198,23 @@ async function handleAgentMessage(
   }
 }
 
+// const testMain = async () => {
+//   const tool = agent.getTool("search_files");
+
+//   if (isError(tool)) {
+//     return;
+//   }
+
+//   console.log("Running tool");
+
+//   console.log(
+//     await tool.data.process({
+//       searchString: "fizz",
+//     })
+//   );
+// };
+
+// testMain();
 main().catch((err) => {
   console.error(err);
   process.exit(1);

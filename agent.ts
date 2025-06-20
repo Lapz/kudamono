@@ -1,11 +1,12 @@
-import fs from "fs/promises";
+import * as fs from "fs/promises";
 import z from "zod/v4";
-import { err, ok, type Result } from "./result";
-import type { Conversation } from "./conversation";
-import { config } from "./config";
-import { goldText } from "./text";
+import { err, ok, type Result } from "./result.ts";
+import type { Conversation } from "./conversation.ts";
+import { config } from "./config.ts";
+import { goldText } from "./text.ts";
+import { rgPath } from "@vscode/ripgrep";
 
-import type { Message } from "./anthropic";
+import type { Message } from "./anthropic.ts";
 
 type Tool = {
   name: string;
@@ -201,7 +202,7 @@ agent.tool("github", {
     owner: z.string(),
     repo: z.string(),
   }),
-  handler: async ({ owner, repo }) => {
+  handler: async ({ owner: _owner, repo: _repo }) => {
     return ok(
       JSON.stringify({
         success: true,
@@ -219,6 +220,26 @@ agent.tool("add_numbers", {
   }),
   handler: async ({ a, b }) => {
     return ok(JSON.stringify(a + b));
+  },
+});
+
+agent.tool("search_files", {
+  description:
+    "Search for a string pattern within the files; Returns the path to the files which contain the string pattern",
+  schema: z.object({
+    searchString: z.string(),
+    directory: z.string().optional(),
+  }),
+  handler: async ({ searchString, directory }) => {
+    const proc = Bun.spawn(
+      [rgPath, searchString, "--files-with-matches", directory].filter(
+        Boolean
+      ) as string[]
+    );
+
+    const text = await new Response(proc.stdout).text();
+
+    return ok(JSON.stringify(text));
   },
 });
 

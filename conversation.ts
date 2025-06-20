@@ -1,4 +1,4 @@
-import type { ToolResultMessage, ToolUseMessage } from "./anthropic";
+import type { ToolResultMessage, ToolUseMessage } from "./anthropic.ts";
 
 type ConversationItem = {
   role: "user" | "assistant";
